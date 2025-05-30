@@ -255,24 +255,23 @@ if (document.querySelector(".aluno-section")) {
 // =============================================
 
 if (document.querySelector(".coordenador-section")) {
-  // Configura formulário de evento
+  // Configura formulário de cadastro de evento
   setupFormAJAX(
     'event-form',
     './back-end/cadastrar_evento.php',
     (result, form) => {
-        if (result.success) {
-            alert(result.message);
-            form.reset();
-            carregarEventosCoordenador();
-        } else {
-            throw new Error(result.message);
-        }
+      if (result.success) {
+        alert('Evento cadastrado com sucesso!');
+        form.reset();
+        carregarEventosCoordenador();
+      } else {
+        throw new Error(result.message || 'Erro ao cadastrar evento');
+      }
     },
     (error) => {
-        console.error('Erro no formulário:', error);
-        alert(error.message);
+      alert(error.message);
     }
-);
+  );
 
   // Carrega eventos do coordenador
   async function carregarEventosCoordenador() {
@@ -282,66 +281,37 @@ if (document.querySelector(".coordenador-section")) {
       
       eventList.innerHTML = eventos.length > 0
         ? eventos.map(evento => `
-            <div class="event-item">
-              <span class="event-title">${evento.nome}</span>
-              <span class="event-date">${formatarData(evento.data_inicio)} - ${evento.local}</span>
+            <div class="event-item" data-id="${evento.id}">
+              <h3>${evento.nome}</h3>
+              ${evento.descricao ? `<p class="event-desc">${evento.descricao}</p>` : ''}
+              <p><strong>Local:</strong> ${evento.local}</p>
+              <p><strong>Início:</strong> ${formatarData(evento.data_inicio)}</p>
+              <p><strong>Término:</strong> ${formatarData(evento.data_fim)}</p>
               <div class="event-actions">
-                <button class="btn-editar" data-id="${evento.id}">Editar</button>
-                <button class="btn-presenca" data-id="${evento.id}">Presença</button>
+                <button class="btn-editar">Editar</button>
+                <button class="btn-presenca">Presença</button>
               </div>
             </div>
           `).join('')
-        : '<p>Nenhum evento cadastrado ainda.</p>';
+        : '<p class="no-events">Nenhum evento cadastrado ainda.</p>';
 
       // Configura botões de ação
       document.querySelectorAll('.btn-editar').forEach(btn => {
-        btn.addEventListener('click', () => abrirModalEdicao(btn.getAttribute('data-id')));
+        btn.addEventListener('click', function() {
+          const eventId = this.closest('.event-item').getAttribute('data-id');
+          abrirModalEdicao(eventId);
+        });
       });
       
       document.querySelectorAll('.btn-presenca').forEach(btn => {
-        btn.addEventListener('click', () => abrirModalPresenca(btn.getAttribute('data-id')));
+        btn.addEventListener('click', function() {
+          const eventId = this.closest('.event-item').getAttribute('data-id');
+          abrirModalPresenca(eventId);
+        });
       });
     } catch (error) {
       console.error('Erro ao carregar eventos:', error);
-      document.querySelector(".event-list").innerHTML = '<p>Erro ao carregar eventos.</p>';
-    }
-  }
-
-  // Configura botão para gerar código de presença
-  const btnGerarCodigo = document.querySelector(".btn-gerar-codigo");
-  if (btnGerarCodigo) {
-    btnGerarCodigo.addEventListener("click", async () => {
-      const eventId = prompt("Para qual evento deseja gerar o código? (Insira o ID)");
-      if (!eventId) return;
-
-      try {
-        const result = await fetchAPI('./back-end/gerar_codigo_presenca.php', 'POST', { evento_id: eventId });
-        alert(`Código de presença gerado: ${result.codigo}\nValidade: ${result.validade}`);
-      } catch (error) {
-        alert(error.message || "Erro ao gerar código");
-      }
-    });
-  }
-
-  // Carrega lista de presença
-  async function carregarPresencas(eventId) {
-    try {
-      const presencas = await fetchAPI(`./back-end/listar_presencas.php?evento_id=${eventId}`);
-      const presencaList = document.querySelector(".presenca-list");
-      
-      presencaList.innerHTML = presencas.length > 0
-        ? presencas.map(presenca => `
-            <div class="presenca-item">
-              <span>${presenca.nome_aluno}</span>
-              <span class="status-presenca confirmado">
-                Confirmado em ${formatarDataHora(presenca.data_presenca)}
-              </span>
-            </div>
-          `).join('')
-        : '<p>Nenhuma presença registrada ainda.</p>';
-    } catch (error) {
-      console.error('Erro ao carregar presenças:', error);
-      document.querySelector(".presenca-list").innerHTML = '<p>Erro ao carregar presenças.</p>';
+      document.querySelector(".event-list").innerHTML = '<p class="error">Erro ao carregar eventos: ' + error.message + '</p>';
     }
   }
 
@@ -350,6 +320,13 @@ if (document.querySelector(".coordenador-section")) {
     try {
       const evento = await fetchAPI(`./back-end/obter_evento.php?id=${eventId}`);
       
+      // Formata as datas para o input datetime-local
+      const formatarParaInputDatetime = (datetime) => {
+        if (!datetime) return '';
+        const date = new Date(datetime);
+        return date.toISOString().slice(0, 16);
+      };
+
       const modal = document.createElement("div");
       modal.classList.add("modal");
       modal.id = "modal-edicao";
@@ -357,7 +334,8 @@ if (document.querySelector(".coordenador-section")) {
         <div class="modal-content">
           <span class="fechar-modal">&times;</span>
           <h2>Editar Evento</h2>
-          <form id="form-edicao" data-id="${eventId}">
+          <form id="form-edicao">
+            <input type="hidden" name="id" value="${eventId}">
             <div class="form-group">
               <input type="text" name="nome" value="${evento.nome}" placeholder="Nome do Evento" required />
             </div>
@@ -367,19 +345,13 @@ if (document.querySelector(".coordenador-section")) {
             </div>
 
             <div class="form-group">
-              <label>Data e Hora de Início:</label>
-              <div class="datetime-container">
-                <input type="date" name="data_inicio_date" value="${evento.data_inicio.split(' ')[0]}" required />
-                <input type="time" name="data_inicio_time" value="${evento.data_inicio.split(' ')[1].substring(0, 5)}" required />
-              </div>
+              <label for="data_inicio">Data e Hora de Início:</label>
+              <input type="datetime-local" name="data_inicio" value="${formatarParaInputDatetime(evento.data_inicio)}" required />
             </div>
 
             <div class="form-group">
-              <label>Data e Hora de Término:</label>
-              <div class="datetime-container">
-                <input type="date" name="data_fim_date" value="${evento.data_fim.split(' ')[0]}" required />
-                <input type="time" name="data_fim_time" value="${evento.data_fim.split(' ')[1].substring(0, 5)}" required />
-              </div>
+              <label for="data_fim">Data e Hora de Término:</label>
+              <input type="datetime-local" name="data_fim" value="${formatarParaInputDatetime(evento.data_fim)}" required />
             </div>
 
             <div class="form-group">
@@ -404,12 +376,19 @@ if (document.querySelector(".coordenador-section")) {
       // Configura form de edição
       setupFormAJAX(
         'form-edicao',
-        `./back-end/editar_evento.php?id=${eventId}`,
-        () => {
-          alert('Evento atualizado com sucesso!');
-          carregarEventosCoordenador();
-          fecharModal("modal-edicao");
-          modal.remove();
+        './back-end/editar_evento.php',
+        (result) => {
+          if (result.success) {
+            alert('Evento atualizado com sucesso!');
+            carregarEventosCoordenador();
+            fecharModal("modal-edicao");
+            modal.remove();
+          } else {
+            throw new Error(result.message || 'Erro ao atualizar evento');
+          }
+        },
+        (error) => {
+          alert(error.message);
         }
       );
       
@@ -417,11 +396,15 @@ if (document.querySelector(".coordenador-section")) {
       modal.querySelector(".btn-excluir").addEventListener("click", async () => {
         if (confirm("Tem certeza que deseja excluir este evento?")) {
           try {
-            await fetchAPI(`./back-end/excluir_evento.php?id=${eventId}`, 'DELETE');
-            alert('Evento excluído com sucesso!');
-            carregarEventosCoordenador();
-            fecharModal("modal-edicao");
-            modal.remove();
+            const result = await fetchAPI('./back-end/excluir_evento.php', 'POST', { id: eventId });
+            if (result.success) {
+              alert('Evento excluído com sucesso!');
+              carregarEventosCoordenador();
+              fecharModal("modal-edicao");
+              modal.remove();
+            } else {
+              throw new Error(result.message || 'Erro ao excluir evento');
+            }
           } catch (error) {
             alert(error.message || 'Erro ao excluir evento');
           }
@@ -429,7 +412,7 @@ if (document.querySelector(".coordenador-section")) {
       });
     } catch (error) {
       console.error('Erro ao abrir modal de edição:', error);
-      alert('Erro ao carregar dados do evento');
+      alert('Erro ao carregar dados do evento: ' + error.message);
     }
   }
 
@@ -440,13 +423,32 @@ if (document.querySelector(".coordenador-section")) {
       const modal = document.getElementById("modal-presenca");
       
       if (modal) {
-        modal.querySelector("h2").textContent = `Presença: ${evento.nome}`;
+        modal.querySelector("h2").textContent = `Lista de Presença: ${evento.nome}`;
         abrirModal("modal-presenca");
-        await carregarPresencas(eventId);
+        
+        // Carrega a lista de presença
+        try {
+          const presencas = await fetchAPI(`./back-end/listar_presencas.php?evento_id=${eventId}`);
+          const presencaList = modal.querySelector(".presenca-list");
+          
+          presencaList.innerHTML = presencas.length > 0
+            ? presencas.map(presenca => `
+                <div class="presenca-item">
+                  <span>${presenca.nome_aluno}</span>
+                  <span class="status-presenca confirmado">
+                    Confirmado em ${formatarData(presenca.data_presenca)}
+                  </span>
+                </div>
+              `).join('')
+            : '<p>Nenhuma presença registrada ainda.</p>';
+        } catch (error) {
+          console.error('Erro ao carregar presenças:', error);
+          modal.querySelector(".presenca-list").innerHTML = '<p class="error">Erro ao carregar presenças: ' + error.message + '</p>';
+        }
       }
     } catch (error) {
       console.error('Erro ao abrir modal de presença:', error);
-      alert('Erro ao carregar dados de presença');
+      alert('Erro ao carregar dados de presença: ' + error.message);
     }
   }
 
