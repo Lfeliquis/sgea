@@ -16,12 +16,12 @@ $aluno_id = $_SESSION['id'];
 
 try {
     // Verifica se o código é válido e obtém o evento correspondente
-    $sql = "SELECT cp.id, cp.evento_id 
-            FROM codigos_presenca cp
-            JOIN eventos e ON cp.evento_id = e.id
-            WHERE cp.codigo = ? 
-            AND cp.utilizado = 0
-            AND cp.data_geracao >= NOW() - INTERVAL 2 HOUR";
+    $sql = "SELECT cp.id, cp.evento_id, e.data_inicio, e.data_fim 
+        FROM codigos_presenca cp
+        JOIN eventos e ON cp.evento_id = e.id
+        WHERE cp.codigo = ? 
+        AND cp.utilizado = 0
+        AND cp.data_geracao >= NOW() - INTERVAL 1 HOUR";
     
     $stmt = $mysqli->prepare($sql);
     $stmt->bind_param("s", $codigo);
@@ -36,8 +36,30 @@ try {
     $row = $result->fetch_assoc();
     $evento_id = $row['evento_id'];
     
+    // Verifica se o evento está em andamento
+    $now = new DateTime();
+    $inicio = new DateTime($row['data_inicio']);
+    $fim = new DateTime($row['data_fim']);
+    
+    if ($now < $inicio || $now > $fim) {
+        echo json_encode(['success' => false, 'message' => 'Fora do período do evento']);
+        exit();
+    }
+    
+    // Verifica se o aluno está inscrito no evento
+    $inscricao_sql = "SELECT id FROM inscricoes WHERE evento_id = ? AND aluno_id = ?";
+    $inscricao_stmt = $mysqli->prepare($inscricao_sql);
+    $inscricao_stmt->bind_param("ii", $evento_id, $aluno_id);
+    $inscricao_stmt->execute();
+    $inscricao_result = $inscricao_stmt->get_result();
+    
+    if ($inscricao_result->num_rows == 0) {
+        echo json_encode(['success' => false, 'message' => 'Você não está inscrito neste evento']);
+        exit();
+    }
+    
     // Verifica se o aluno já confirmou presença
-    $presenca_sql = "SELECT id FROM codigos_presenca WHERE evento_id = ? AND aluno_id = ?";
+    $presenca_sql = "SELECT id FROM presencas WHERE evento_id = ? AND aluno_id = ?";
     $presenca_stmt = $mysqli->prepare($presenca_sql);
     $presenca_stmt->bind_param("ii", $evento_id, $aluno_id);
     $presenca_stmt->execute();
@@ -49,14 +71,14 @@ try {
     }
     
     // Registra a presença
-    $insert_sql = "INSERT INTO codigo_presenca (evento_id, aluno_id, data_presenca, codigo) 
+    $insert_sql = "INSERT INTO presencas (evento_id, aluno_id, data_presenca, codigo_presenca) 
                    VALUES (?, ?, NOW(), ?)";
     $insert_stmt = $mysqli->prepare($insert_sql);
     $insert_stmt->bind_param("iis", $evento_id, $aluno_id, $codigo);
     
     if ($insert_stmt->execute()) {
         // Marca o código como utilizado
-        $update_sql = "UPDATE codigo SET utilizado = 1 WHERE id = ?";
+        $update_sql = "UPDATE codigos_presenca SET utilizado = 1 WHERE id = ?";
         $update_stmt = $mysqli->prepare($update_sql);
         $update_stmt->bind_param("i", $row['id']);
         $update_stmt->execute();

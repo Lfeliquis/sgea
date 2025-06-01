@@ -33,6 +33,16 @@ document.querySelectorAll(".modal").forEach((modal) => {
   });
 });
 
+//Evento esta ativo?
+
+function eventoEstaAtivo(dataInicio, dataFim) {
+    const agora = new Date();
+    const inicio = new Date(dataInicio);
+    const fim = new Date(dataFim);
+    
+    return agora >= inicio && agora <= fim;
+}
+
 // Funções auxiliares de formatação
 function formatarData(dataString) {
   if (!dataString) return '';
@@ -181,24 +191,32 @@ async function carregarEventos() {
 
         // Configura eventos de confirmação de presença
         document.querySelectorAll(".btn-confirmar-evento").forEach(btn => {
-            btn.addEventListener("click", async () => {
-                const eventId = btn.getAttribute('data-id');
-                const codigo = prompt("Digite o código de presença fornecido pelo coordenador:");
-                
-                if (!codigo) {
-                    alert("Por favor, insira um código válido.");
-                    return;
-                }
+    btn.addEventListener("click", async () => {
+        const eventId = btn.getAttribute('data-id');
+        const codigo = prompt("Digite o código de presença fornecido pelo coordenador:");
+        
+        if (!codigo) {
+            alert("Por favor, insira um código válido.");
+            return;
+        }
 
-                try {
-                    const result = await fetchAPI('./back-end/confirmar_presenca.php', 'POST', { codigo: codigo.trim() });
-                    alert(result.message || "Presença confirmada com sucesso!");
-                    carregarCertificados();
-                } catch (error) {
-                    alert(error.message || "Erro ao confirmar presença");
-                }
-            });
-        });
+        try {
+    const result = await fetchAPI('./back-end/confirmar_presenca.php', 'POST', { 
+        codigo: codigo.trim(),
+        evento_id: eventId
+    });
+    
+    if (result.success) {
+        alert(result.message || "Presença confirmada com sucesso!");
+        carregarCertificados();
+    } else {
+        throw new Error(result.message || "Erro ao confirmar presença");
+    }
+} catch (error) {
+    alert(error.message || "Erro ao confirmar presença");
+}
+    });
+});
     } catch (error) {
         console.error('Erro ao carregar eventos:', error);
         document.getElementById("event-list").innerHTML = '<p>Erro ao carregar eventos. Tente novamente.</p>';
@@ -424,38 +442,81 @@ if (document.querySelector(".coordenador-section")) {
   // Abre modal de presença
   async function abrirModalPresenca(eventId) {
     try {
-      const evento = await fetchAPI(`./back-end/obter_evento.php?id=${eventId}`);
-      const modal = document.getElementById("modal-presenca");
-      
-      if (modal) {
-        modal.querySelector("h2").textContent = `Lista de Presença: ${evento.nome}`;
-        abrirModal("modal-presenca");
+        const evento = await fetchAPI(`./back-end/obter_evento.php?id=${eventId}`);
+        const modal = document.getElementById("modal-presenca");
         
-        // Carrega a lista de presença
-        try {
-          const presencas = await fetchAPI(`./back-end/listar_presencas.php?evento_id=${eventId}`);
-          const presencaList = modal.querySelector(".presenca-list");
-          
-          presencaList.innerHTML = presencas.length > 0
-            ? presencas.map(presenca => `
-                <div class="presenca-item">
-                  <span>${presenca.nome_aluno}</span>
-                  <span class="status-presenca confirmado">
-                    Confirmado em ${formatarData(presenca.data_presenca)}
-                  </span>
-                </div>
-              `).join('')
-            : '<p>Nenhuma presença registrada ainda.</p>';
-        } catch (error) {
-          console.error('Erro ao carregar presenças:', error);
-          modal.querySelector(".presenca-list").innerHTML = '<p class="error">Erro ao carregar presenças: ' + error.message + '</p>';
+        if (modal) {
+            modal.querySelector("h2").textContent = `Lista de Presença: ${evento.nome}`;
+            abrirModal("modal-presenca");
+            
+            // Adiciona botão para gerar novo código
+            const presencaHeader = document.createElement('div');
+            presencaHeader.className = 'presenca-header';
+            presencaHeader.innerHTML = `
+                <button class="btn-gerar-codigo" data-event-id="${eventId}">
+                    Gerar Novo Código
+                </button>
+                <small class="codigo-info">Código atual: ${evento.codigo_presenca || 'Nenhum'}</small>
+            `;
+            
+            const presencaList = modal.querySelector(".presenca-list");
+            presencaList.innerHTML = '';
+            presencaList.appendChild(presencaHeader);
+            
+            // Configura evento para gerar código
+            presencaHeader.querySelector('.btn-gerar-codigo').addEventListener('click', async (e) => {
+                e.stopPropagation();
+                try {
+                    const result = await fetchAPI('./back-end/gerar_codigo_presenca.php', 'POST', { 
+                        evento_id: eventId 
+                    });
+                    
+                    if (result.success) {
+                        alert(`Novo código gerado: ${result.codigo}\nValidade: 2 horas`);
+                        presencaHeader.querySelector('.codigo-info').textContent = 
+                            `Código atual: ${result.codigo}`;
+                    } else {
+                        throw new Error(result.message || 'Erro ao gerar código');
+                    }
+                } catch (error) {
+                    alert(error.message || 'Erro ao gerar código de presença');
+                }
+            });
+            
+            // Carrega a lista de presença
+            try {
+                const presencas = await fetchAPI(`./back-end/listar_presencas.php?evento_id=${eventId}`);
+                
+                const listContainer = document.createElement('div');
+                listContainer.className = 'presenca-list-container';
+                
+                if (presencas.length > 0) {
+                    listContainer.innerHTML = presencas.map(presenca => `
+                        <div class="presenca-item">
+                            <span>${presenca.nome_aluno}</span>
+                            <span class="status-presenca confirmado">
+                                Confirmado em ${formatarData(presenca.data_presenca)}
+                            </span>
+                        </div>
+                    `).join('');
+                } else {
+                    listContainer.innerHTML = '<p>Nenhuma presença registrada ainda.</p>';
+                }
+                
+                presencaList.appendChild(listContainer);
+            } catch (error) {
+                console.error('Erro ao carregar presenças:', error);
+                const errorMsg = document.createElement('p');
+                errorMsg.className = 'error';
+                errorMsg.textContent = 'Erro ao carregar presenças: ' + error.message;
+                presencaList.appendChild(errorMsg);
+            }
         }
-      }
     } catch (error) {
-      console.error('Erro ao abrir modal de presença:', error);
-      alert('Erro ao carregar dados de presença: ' + error.message);
+        console.error('Erro ao abrir modal de presença:', error);
+        alert('Erro ao carregar dados de presença: ' + error.message);
     }
-  }
+}
 
   // Carregar dados ao iniciar
   window.addEventListener('DOMContentLoaded', carregarEventosCoordenador);

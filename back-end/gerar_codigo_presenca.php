@@ -37,8 +37,8 @@ try {
     $codigo = strtoupper(substr(md5(uniqid(rand(), true)), 0, 6));
     
     // Insere o código no banco de dados
-    $sql = "INSERT INTO codigos_presenca (evento_id, codigo) 
-            VALUES (?, ?)";
+    $sql = "INSERT INTO codigos_presenca (evento_id, codigo, data_geracao) 
+        VALUES (?, ?, NOW())";
     
     $stmt = $mysqli->prepare($sql);
     $stmt->bind_param("is", $evento_id, $codigo);
