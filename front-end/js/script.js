@@ -163,7 +163,7 @@ if (registerBtn && loginBtn) {
 
 if (document.querySelector(".aluno-section")) {
   // Carrega eventos do servidor
-  async function carregarEventos() {
+async function carregarEventos() {
     try {
         const eventos = await fetchAPI('./back-end/listar_eventos.php');
         const eventList = document.getElementById("event-list");
@@ -174,25 +174,10 @@ if (document.querySelector(".aluno-section")) {
                 <span class="event-date">${formatarData(evento.data_inicio)} - ${evento.local}</span>
                 <span class="event-coord">Coordenador: ${evento.coordenador_nome}</span>
                 <div class="event-actions">
-                    <button class="btn-inscrever" data-id="${evento.id}">Inscrever-se</button>
                     <button class="btn-confirmar-evento" data-id="${evento.id}">Confirmar Presença</button>
                 </div>
             </div>
         `).join('');
-
-        // Configura eventos de inscrição
-        document.querySelectorAll(".btn-inscrever").forEach(btn => {
-            btn.addEventListener("click", async () => {
-                const eventId = btn.getAttribute('data-id');
-                try {
-                    const result = await fetchAPI('./back-end/inscrever_evento.php', 'POST', { evento_id: eventId });
-                    alert("Inscrição realizada com sucesso!");
-                    carregarEventos();
-                } catch (error) {
-                    alert(error.message || "Erro ao realizar inscrição");
-                }
-            });
-        });
 
         // Configura eventos de confirmação de presença
         document.querySelectorAll(".btn-confirmar-evento").forEach(btn => {

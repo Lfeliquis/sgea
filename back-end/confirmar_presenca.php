@@ -20,8 +20,8 @@ try {
             FROM codigos_presenca cp
             JOIN eventos e ON cp.evento_id = e.id
             WHERE cp.codigo = ? 
-            AND e.data_fim >= NOW() - INTERVAL 1 DAY
-            AND cp.data_geracao >= NOW() - INTERVAL 1 HOUR";
+            AND cp.utilizado = 0
+            AND cp.data_geracao >= NOW() - INTERVAL 2 HOUR";
     
     $stmt = $mysqli->prepare($sql);
     $stmt->bind_param("s", $codigo);
@@ -29,29 +29,14 @@ try {
     $result = $stmt->get_result();
     
     if ($result->num_rows == 0) {
-        echo json_encode(['success' => false, 'message' => 'Código inválido ou expirado']);
+        echo json_encode(['success' => false, 'message' => 'Código inválido, expirado ou já utilizado']);
         exit();
     }
     
     $row = $result->fetch_assoc();
     $evento_id = $row['evento_id'];
     
-    // Verifica se o aluno está inscrito no evento
-    $check_sql = "SELECT id FROM inscricoes WHERE evento_id = ? AND aluno_id = ?";
-    $check_stmt = $mysqli->prepare($check_sql);
-    $check_stmt->bind_param("ii", $evento_id, $aluno_id);
-    $check_stmt->execute();
-    $check_result = $check_stmt->get_result();
-    
-    if ($check_result->num_rows == 0) {
-        echo json_encode(['success' => false, 'message' => 'Você não está inscrito neste evento']);
-        exit();
-    }
-    
-    $inscricao = $check_result->fetch_assoc();
-    $inscricao_id = $inscricao['id'];
-    
-    // Verifica se já confirmou presença
+    // Verifica se o aluno já confirmou presença
     $presenca_sql = "SELECT id FROM presencas WHERE evento_id = ? AND aluno_id = ?";
     $presenca_stmt = $mysqli->prepare($presenca_sql);
     $presenca_stmt->bind_param("ii", $evento_id, $aluno_id);
@@ -70,16 +55,13 @@ try {
     $insert_stmt->bind_param("iis", $evento_id, $aluno_id, $codigo);
     
     if ($insert_stmt->execute()) {
-        // Gera o certificado
-        $certificado_link = "certificados/certificado_" . $evento_id . "_" . $aluno_id . ".pdf";
+        // Marca o código como utilizado
+        $update_sql = "UPDATE codigos_presenca SET utilizado = 1 WHERE id = ?";
+        $update_stmt = $mysqli->prepare($update_sql);
+        $update_stmt->bind_param("i", $row['id']);
+        $update_stmt->execute();
         
-        $cert_sql = "INSERT INTO certificados (inscricao_id, link_certificado) 
-                     VALUES (?, ?)";
-        $cert_stmt = $mysqli->prepare($cert_sql);
-        $cert_stmt->bind_param("is", $inscricao_id, $certificado_link);
-        $cert_stmt->execute();
-        
-        echo json_encode(['success' => true, 'message' => 'Presença confirmada e certificado gerado com sucesso']);
+        echo json_encode(['success' => true, 'message' => 'Presença confirmada com sucesso']);
     } else {
         echo json_encode(['success' => false, 'message' => 'Erro ao confirmar presença']);
     }

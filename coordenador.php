@@ -125,7 +125,6 @@ if ($mysqli->connect_error) {
             </div>
         </div>
     </main>
-
-    <script src="./front-end/js/script.js"></script>
+    <script src="../sgea/front-end/js/script.js"></script>
 </body>
 </html>

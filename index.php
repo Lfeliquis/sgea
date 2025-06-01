@@ -171,5 +171,6 @@ if (isset($_SESSION['mensagem'])) {
     </div>
 
     <script src="../sgea/front-end/js/script.js"></script>
+
 </body>
 </html>

@@ -7,7 +7,7 @@ try {
                    u.nome AS coordenador_nome
             FROM eventos e
             JOIN usuarios u ON e.coordenador_id = u.id
-            WHERE e.data_fim >= NOW()
+            WHERE e.data_inicio >= NOW() - INTERVAL 1 DAY
             ORDER BY e.data_inicio ASC";
     
     $result = $mysqli->query($sql);
