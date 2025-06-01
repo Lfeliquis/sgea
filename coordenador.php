@@ -42,31 +42,37 @@ if ($mysqli->connect_error) {
                 <section id="cadastrar-evento">
                     <h2>Cadastrar Novo Evento</h2>
                     <div id="form-messages"></div>
-                    <form id="event-form">
-                        <div class="form-group">
-                            <input type="text" id="nome" name="nome" placeholder="Nome do Evento" required />
-                        </div>
-                        
-                        <div class="form-group">
-                            <textarea id="descricao" name="descricao" placeholder="Descrição do Evento"></textarea>
-                        </div>
+                <form id="event-form">
+                    <div class="form-group">
+                        <input type="text" id="nome" name="nome" placeholder="Nome do Evento" required />
+                    </div>
+                    
+                    <div class="form-group">
+                        <textarea id="descricao" name="descricao" placeholder="Descrição do Evento"></textarea>
+                    </div>
 
-                        <div class="form-group">
-                            <label for="data_inicio">Data e Hora de Início:</label>
-                            <input type="datetime-local" id="data_inicio" name="data_inicio" required />
-                        </div>
+                    <div class="form-group">
+                        <label for="data_inicio">Data e Hora de Início:</label>
+                        <input type="datetime-local" id="data_inicio" name="data_inicio" required />
+                    </div>
 
-                        <div class="form-group">
-                            <label for="data_fim">Data e Hora de Término:</label>
-                            <input type="datetime-local" id="data_fim" name="data_fim" required />
-                        </div>
+                    <div class="form-group">
+                        <label for="data_fim">Data e Hora de Término:</label>
+                        <input type="datetime-local" id="data_fim" name="data_fim" required />
+                    </div>
 
-                        <div class="form-group">
-                            <input type="text" id="local" name="local" placeholder="Local do Evento" required />
-                        </div>
+                    <div class="form-group">
+                        <input type="text" id="local" name="local" placeholder="Local do Evento" required />
+                    </div>
 
-                        <button type="submit" class="btn">Cadastrar Evento</button>
-                    </form>
+                    <div class="form-group">
+                        <input type="text" id="codigo" name="codigo" 
+                            placeholder="Código de Presença" required />
+                        <small>Este código será usado pelos alunos para confirmar presença</small>
+                    </div>
+
+                    <button type="submit" class="btn">Cadastrar Evento</button>
+                </form>
                 </section>
             </div>
 
@@ -78,8 +84,11 @@ if ($mysqli->connect_error) {
                         <?php
                         try {
                             $coordenador_id = $_SESSION['id'];
-                            $sql = "SELECT id, nome, descricao, data_inicio, data_fim, local FROM eventos 
-                                    WHERE coordenador_id = ? ORDER BY data_inicio DESC";
+                            $sql = "SELECT e.id, e.nome, e.descricao, e.data_inicio, e.data_fim, e.local, c.codigo as codigo_presenca 
+                                    FROM eventos e
+                                    LEFT JOIN codigos_presenca c ON e.id = c.evento_id
+                                    WHERE e.coordenador_id = ? 
+                                    ORDER BY e.data_inicio DESC";
                             $stmt = $mysqli->prepare($sql);
                             $stmt->bind_param("i", $coordenador_id);
                             $stmt->execute();
@@ -95,6 +104,7 @@ if ($mysqli->connect_error) {
                                     echo '<p><strong>Local:</strong> '.htmlspecialchars($evento['local']).'</p>';
                                     echo '<p><strong>Início:</strong> '.date('d/m/Y H:i', strtotime($evento['data_inicio'])).'</p>';
                                     echo '<p><strong>Término:</strong> '.date('d/m/Y H:i', strtotime($evento['data_fim'])).'</p>';
+                                    echo '<p><strong>Código Presença:</strong> '.htmlspecialchars($evento['codigo_presenca']).'</p>';
                                     echo '<div class="event-actions">';
                                     echo '<button class="btn-editar">Editar</button>';
                                     echo '<button class="btn-presenca">Presença</button>';

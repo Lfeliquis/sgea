@@ -37,7 +37,7 @@ try {
     $evento_id = $row['evento_id'];
     
     // Verifica se o aluno já confirmou presença
-    $presenca_sql = "SELECT id FROM presencas WHERE evento_id = ? AND aluno_id = ?";
+    $presenca_sql = "SELECT id FROM codigos_presenca WHERE evento_id = ? AND aluno_id = ?";
     $presenca_stmt = $mysqli->prepare($presenca_sql);
     $presenca_stmt->bind_param("ii", $evento_id, $aluno_id);
     $presenca_stmt->execute();
@@ -49,14 +49,14 @@ try {
     }
     
     // Registra a presença
-    $insert_sql = "INSERT INTO presencas (evento_id, aluno_id, data_presenca, codigo_presenca) 
+    $insert_sql = "INSERT INTO codigo_presenca (evento_id, aluno_id, data_presenca, codigo) 
                    VALUES (?, ?, NOW(), ?)";
     $insert_stmt = $mysqli->prepare($insert_sql);
     $insert_stmt->bind_param("iis", $evento_id, $aluno_id, $codigo);
     
     if ($insert_stmt->execute()) {
         // Marca o código como utilizado
-        $update_sql = "UPDATE codigos_presenca SET utilizado = 1 WHERE id = ?";
+        $update_sql = "UPDATE codigo SET utilizado = 1 WHERE id = ?";
         $update_stmt = $mysqli->prepare($update_sql);
         $update_stmt->bind_param("i", $row['id']);
         $update_stmt->execute();
