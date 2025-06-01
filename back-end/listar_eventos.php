@@ -3,8 +3,10 @@ include('./conexao/connect.php');
 header('Content-Type: application/json');
 
 try {
-    $sql = "SELECT e.id, e.nome, e.descricao, e.data_inicio, e.data_fim, e.local 
+    $sql = "SELECT e.id, e.nome, e.descricao, e.data_inicio, e.data_fim, e.local, 
+                   u.nome AS coordenador_nome
             FROM eventos e
+            JOIN usuarios u ON e.coordenador_id = u.id
             WHERE e.data_fim >= NOW()
             ORDER BY e.data_inicio ASC";
     

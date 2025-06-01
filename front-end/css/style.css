@@ -312,6 +312,7 @@ main {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  margin-bottom: 20px;
 }
 
 .event-item {
@@ -495,12 +496,6 @@ main {
   font-weight: 400;
 }
 
-/* Página do Diretor */
-.diretor-section {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
 
 .coordenador-form,
 .coordenador-list {
@@ -548,7 +543,16 @@ main {
   background: #5a7bd8;
 }
 
+/* Página do Diretor */
+.diretor-section {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+
 /* Responsividade */
+
 @media screen and (max-width: 650px) {
   .container {
     height: calc(100vh - 40px);

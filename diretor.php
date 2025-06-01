@@ -9,7 +9,7 @@
     <title>SGEA: Diretor</title>
     <link
       rel="stylesheet"
-      href="../css/style.css"
+      href="../sgea/front-end/css/style.css"
     />
   </head>
   <body>
@@ -22,7 +22,7 @@
           <a href="#lista-eventos">Eventos Criados</a>
           <a href="#lista-presenca">Presença de Alunos</a>
           <a
-            href="../pages/login.html"
+            href="../sgea/logout.php"
             class="sair-link"
             >Sair</a
           >

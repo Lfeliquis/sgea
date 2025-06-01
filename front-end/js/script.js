@@ -59,38 +59,32 @@ function formatarDataHora(dataString) {
  */
 
 async function fetchAPI(url, method = 'GET', data = null) {
-    const config = {
-        method,
-        headers: {
-            'Content-Type': 'application/json',
-        },
-    };
+  const config = {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include' // Adicione isso se estiver usando sessões/cookies
+  };
 
-    if (data) {
-        config.body = JSON.stringify(data);
-    }
+  if (data) {
+    config.body = JSON.stringify(data);
+  }
 
-    try {
-        const response = await fetch(url, config);
-        const responseText = await response.text();
-        
-        // Debug: Mostra a resposta bruta no console
-        console.log('Resposta bruta:', responseText);
-        
-        try {
-            const json = JSON.parse(responseText);
-            if (!response.ok) {
-                throw new Error(json.message || 'Erro na requisição');
-            }
-            return json;
-        } catch (e) {
-            console.error('Falha ao parsear JSON:', e);
-            throw new Error(`Resposta inválida do servidor: ${responseText.substring(0, 100)}...`);
-        }
-    } catch (error) {
-        console.error(`Erro na requisição ${method} para ${url}:`, error);
-        throw error;
+  try {
+    const response = await fetch(url, config);
+    
+    if (!response.ok) {
+      // Tenta obter a mensagem de erro do corpo da resposta
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
     }
+    
+    return await response.json();
+  } catch (error) {
+    console.error(`Erro na requisição ${method} para ${url}:`, error);
+    throw new Error(error.message || 'Erro na comunicação com o servidor');
+  }
 }
 
 /**
@@ -106,20 +100,21 @@ function setupFormAJAX(formId, endpoint, onSuccess, onError = null) {
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
+    
     const submitBtn = form.querySelector('button[type="submit"]');
     const originalBtnText = submitBtn.innerHTML;
 
     try {
-      // Mostrar estado de carregamento
       submitBtn.disabled = true;
       submitBtn.innerHTML = '<span class="spinner"></span> Processando...';
 
-      // Obter dados do formulário
+      // Coleta todos os dados do formulário, incluindo o campo hidden id
       const formData = new FormData(form);
       const data = {};
       formData.forEach((value, key) => data[key] = value);
 
-      // Enviar requisição como JSON
+      console.log('Dados sendo enviados:', data); // Adicione este log para depuração
+
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
@@ -134,7 +129,6 @@ function setupFormAJAX(formId, endpoint, onSuccess, onError = null) {
         throw new Error(result.message || 'Erro na requisição');
       }
 
-      // Executar callback de sucesso
       if (onSuccess) onSuccess(result, form);
     } catch (error) {
       console.error('Erro no formulário:', error);
@@ -144,7 +138,6 @@ function setupFormAJAX(formId, endpoint, onSuccess, onError = null) {
         alert(error.message || 'Erro ao processar formulário');
       }
     } finally {
-      // Restaurar botão
       submitBtn.disabled = false;
       submitBtn.innerHTML = originalBtnText;
     }
@@ -172,36 +165,60 @@ if (document.querySelector(".aluno-section")) {
   // Carrega eventos do servidor
   async function carregarEventos() {
     try {
-      const eventos = await fetchAPI('./back-end/listar_eventos.php');
-      const eventList = document.getElementById("event-list");
-      
-      eventList.innerHTML = eventos.map(evento => `
-        <div class="event-item">
-          <span class="event-title">${evento.nome}</span>
-          <span class="event-date">${formatarData(evento.data_inicio)} - ${evento.local}</span>
-          <button class="btn-inscrever" data-id="${evento.id}">Inscrever-se</button>
-        </div>
-      `).join('');
+        const eventos = await fetchAPI('./back-end/listar_eventos.php');
+        const eventList = document.getElementById("event-list");
+        
+        eventList.innerHTML = eventos.map(evento => `
+            <div class="event-item">
+                <span class="event-title">${evento.nome}</span>
+                <span class="event-date">${formatarData(evento.data_inicio)} - ${evento.local}</span>
+                <span class="event-coord">Coordenador: ${evento.coordenador_nome}</span>
+                <div class="event-actions">
+                    <button class="btn-inscrever" data-id="${evento.id}">Inscrever-se</button>
+                    <button class="btn-confirmar-evento" data-id="${evento.id}">Confirmar Presença</button>
+                </div>
+            </div>
+        `).join('');
 
-      // Configura eventos de inscrição
-      document.querySelectorAll(".btn-inscrever").forEach(btn => {
-        btn.addEventListener("click", async () => {
-          const eventId = btn.getAttribute('data-id');
-          try {
-            const result = await fetchAPI('./back-end/inscrever_evento.php', 'POST', { evento_id: eventId });
-            alert("Inscrição realizada com sucesso!");
-            carregarEventos();
-            carregarCertificados();
-          } catch (error) {
-            alert(error.message || "Erro ao realizar inscrição");
-          }
+        // Configura eventos de inscrição
+        document.querySelectorAll(".btn-inscrever").forEach(btn => {
+            btn.addEventListener("click", async () => {
+                const eventId = btn.getAttribute('data-id');
+                try {
+                    const result = await fetchAPI('./back-end/inscrever_evento.php', 'POST', { evento_id: eventId });
+                    alert("Inscrição realizada com sucesso!");
+                    carregarEventos();
+                } catch (error) {
+                    alert(error.message || "Erro ao realizar inscrição");
+                }
+            });
         });
-      });
+
+        // Configura eventos de confirmação de presença
+        document.querySelectorAll(".btn-confirmar-evento").forEach(btn => {
+            btn.addEventListener("click", async () => {
+                const eventId = btn.getAttribute('data-id');
+                const codigo = prompt("Digite o código de presença fornecido pelo coordenador:");
+                
+                if (!codigo) {
+                    alert("Por favor, insira um código válido.");
+                    return;
+                }
+
+                try {
+                    const result = await fetchAPI('./back-end/confirmar_presenca.php', 'POST', { codigo: codigo.trim() });
+                    alert(result.message || "Presença confirmada com sucesso!");
+                    carregarCertificados();
+                } catch (error) {
+                    alert(error.message || "Erro ao confirmar presença");
+                }
+            });
+        });
     } catch (error) {
-      console.error('Erro ao carregar eventos:', error);
-      document.getElementById("event-list").innerHTML = '<p>Erro ao carregar eventos. Tente novamente.</p>';
+        console.error('Erro ao carregar eventos:', error);
+        document.getElementById("event-list").innerHTML = '<p>Erro ao carregar eventos. Tente novamente.</p>';
     }
-  }
+}
 
   // Carrega certificados do servidor
   async function carregarCertificados() {
@@ -316,105 +333,108 @@ if (document.querySelector(".coordenador-section")) {
   }
 
   // Abre modal de edição
-  async function abrirModalEdicao(eventId) {
+ async function abrirModalEdicao(eventId) {
     try {
-      const evento = await fetchAPI(`./back-end/obter_evento.php?id=${eventId}`);
-      
-      // Formata as datas para o input datetime-local
-      const formatarParaInputDatetime = (datetime) => {
-        if (!datetime) return '';
-        const date = new Date(datetime);
-        return date.toISOString().slice(0, 16);
-      };
+        const evento = await fetchAPI(`./back-end/obter_evento.php?id=${eventId}`);
+        
+        // Formata as datas para o input datetime-local
+        const formatarParaInputDatetime = (datetime) => {
+            if (!datetime) return '';
+            const date = new Date(datetime);
+            // Ajusta para o fuso horário local
+            const tzOffset = date.getTimezoneOffset() * 60000;
+            const localISOTime = new Date(date - tzOffset).toISOString().slice(0, 16);
+            return localISOTime;
+        };
 
-      const modal = document.createElement("div");
-      modal.classList.add("modal");
-      modal.id = "modal-edicao";
-      modal.innerHTML = `
-        <div class="modal-content">
-          <span class="fechar-modal">&times;</span>
-          <h2>Editar Evento</h2>
-          <form id="form-edicao">
-            <input type="hidden" name="id" value="${eventId}">
-            <div class="form-group">
-              <input type="text" name="nome" value="${evento.nome}" placeholder="Nome do Evento" required />
-            </div>
-            
-            <div class="form-group">
-              <textarea name="descricao" placeholder="Descrição do Evento">${evento.descricao || ''}</textarea>
-            </div>
+        const modal = document.createElement("div");
+        modal.classList.add("modal");
+        modal.id = "modal-edicao";
+        modal.innerHTML = `
+            <div class="modal-content">
+                <span class="fechar-modal">&times;</span>
+                <h2>Editar Evento</h2>
+                <form id="form-edicao">
+                    <input type="hidden" name="id" value="${eventId}">
+                    <div class="form-group">
+                        <input type="text" name="nome" value="${evento.nome}" placeholder="Nome do Evento" required />
+                    </div>
+                    
+                    <div class="form-group">
+                        <textarea name="descricao" placeholder="Descrição do Evento">${evento.descricao || ''}</textarea>
+                    </div>
 
-            <div class="form-group">
-              <label for="data_inicio">Data e Hora de Início:</label>
-              <input type="datetime-local" name="data_inicio" value="${formatarParaInputDatetime(evento.data_inicio)}" required />
-            </div>
+                    <div class="form-group">
+                        <label for="data_inicio">Data e Hora de Início:</label>
+                        <input type="datetime-local" name="data_inicio" value="${formatarParaInputDatetime(evento.data_inicio)}" required />
+                    </div>
 
-            <div class="form-group">
-              <label for="data_fim">Data e Hora de Término:</label>
-              <input type="datetime-local" name="data_fim" value="${formatarParaInputDatetime(evento.data_fim)}" required />
-            </div>
+                    <div class="form-group">
+                        <label for="data_fim">Data e Hora de Término:</label>
+                        <input type="datetime-local" name="data_fim" value="${formatarParaInputDatetime(evento.data_fim)}" required />
+                    </div>
 
-            <div class="form-group">
-              <input type="text" name="local" value="${evento.local}" placeholder="Local do Evento" required />
-            </div>
+                    <div class="form-group">
+                        <input type="text" name="local" value="${evento.local}" placeholder="Local do Evento" required />
+                    </div>
 
-            <button type="submit" class="btn">Salvar Alterações</button>
-            <button type="button" class="btn btn-excluir">Excluir Evento</button>
-          </form>
-        </div>
-      `;
-      
-      document.body.appendChild(modal);
-      abrirModal("modal-edicao");
-      
-      // Configura eventos do modal
-      modal.querySelector(".fechar-modal").addEventListener("click", () => {
-        fecharModal("modal-edicao");
-        modal.remove();
-      });
-      
-      // Configura form de edição
-      setupFormAJAX(
-        'form-edicao',
-        './back-end/editar_evento.php',
-        (result) => {
-          if (result.success) {
-            alert('Evento atualizado com sucesso!');
-            carregarEventosCoordenador();
+                    <button type="submit" class="btn">Salvar Alterações</button>
+                    <button type="button" class="btn btn-excluir">Excluir Evento</button>
+                </form>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        abrirModal("modal-edicao");
+        
+        // Configura eventos do modal
+        modal.querySelector(".fechar-modal").addEventListener("click", () => {
             fecharModal("modal-edicao");
             modal.remove();
-          } else {
-            throw new Error(result.message || 'Erro ao atualizar evento');
-          }
-        },
-        (error) => {
-          alert(error.message);
-        }
-      );
-      
-      // Configura botão de exclusão
-      modal.querySelector(".btn-excluir").addEventListener("click", async () => {
-        if (confirm("Tem certeza que deseja excluir este evento?")) {
-          try {
-            const result = await fetchAPI('./back-end/excluir_evento.php', 'POST', { id: eventId });
-            if (result.success) {
-              alert('Evento excluído com sucesso!');
-              carregarEventosCoordenador();
-              fecharModal("modal-edicao");
-              modal.remove();
-            } else {
-              throw new Error(result.message || 'Erro ao excluir evento');
+        });
+        
+        // Configura form de edição
+        setupFormAJAX(
+            'form-edicao',
+            './back-end/editar_evento.php',
+            (result) => {
+                if (result.success) {
+                    alert('Evento atualizado com sucesso!');
+                    carregarEventosCoordenador();
+                    fecharModal("modal-edicao");
+                    modal.remove();
+                } else {
+                    throw new Error(result.message || 'Erro ao atualizar evento');
+                }
+            },
+            (error) => {
+                alert(error.message);
             }
-          } catch (error) {
-            alert(error.message || 'Erro ao excluir evento');
-          }
-        }
-      });
+        );
+        
+        // Configura botão de exclusão
+        modal.querySelector(".btn-excluir").addEventListener("click", async () => {
+            if (confirm("Tem certeza que deseja excluir este evento?")) {
+                try {
+                    const result = await fetchAPI('./back-end/excluir_evento.php', 'POST', { id: eventId });
+                    if (result.success) {
+                        alert('Evento excluído com sucesso!');
+                        carregarEventosCoordenador();
+                        fecharModal("modal-edicao");
+                        modal.remove();
+                    } else {
+                        throw new Error(result.message || 'Erro ao excluir evento');
+                    }
+                } catch (error) {
+                    alert(error.message || 'Erro ao excluir evento');
+                }
+            }
+        });
     } catch (error) {
-      console.error('Erro ao abrir modal de edição:', error);
-      alert('Erro ao carregar dados do evento: ' + error.message);
+        console.error('Erro ao abrir modal de edição:', error);
+        alert('Erro ao carregar dados do evento: ' + error.message);
     }
-  }
+}
 
   // Abre modal de presença
   async function abrirModalPresenca(eventId) {
