@@ -1,8 +1,7 @@
 <?php
+header('Content-Type: application/json');
 include('./conexao/connect.php');
 include('./conexao/protect.php');
-
-header('Content-Type: application/json');
 
 if ($_SERVER['REQUEST_METHOD'] != 'POST') {
     http_response_code(405);
@@ -35,7 +34,7 @@ try {
     $stmt->bind_param("ii", $evento_id, $aluno_id);
     
     if ($stmt->execute()) {
-        echo json_encode(['success' => true]);
+        echo json_encode(['success' => true, 'message' => 'Inscrição realizada com sucesso']);
     } else {
         echo json_encode(['success' => false, 'message' => 'Erro ao realizar inscrição']);
     }

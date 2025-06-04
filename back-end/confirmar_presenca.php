@@ -1,8 +1,7 @@
 <?php
+header('Content-Type: application/json');
 include('./conexao/connect.php');
 include('./conexao/protect.php');
-
-header('Content-Type: application/json');
 
 if ($_SERVER['REQUEST_METHOD'] != 'POST') {
     http_response_code(405);
@@ -15,13 +14,13 @@ $codigo = filter_var($data['codigo'], FILTER_SANITIZE_STRING);
 $aluno_id = $_SESSION['id'];
 
 try {
-    // Verifica se o código é válido e obtém o evento correspondente
+    // Verifica o código de presença
     $sql = "SELECT cp.id, cp.evento_id, e.data_inicio, e.data_fim 
-        FROM codigos_presenca cp
-        JOIN eventos e ON cp.evento_id = e.id
-        WHERE cp.codigo = ? 
-        AND cp.utilizado = 0
-        AND cp.data_geracao >= NOW() - INTERVAL 1 HOUR";
+            FROM codigos_presenca cp
+            JOIN eventos e ON cp.evento_id = e.id
+            WHERE cp.codigo = ? 
+            AND cp.utilizado = 0
+            AND cp.data_geracao >= NOW() - INTERVAL 1 HOUR";
     
     $stmt = $mysqli->prepare($sql);
     $stmt->bind_param("s", $codigo);
@@ -36,17 +35,7 @@ try {
     $row = $result->fetch_assoc();
     $evento_id = $row['evento_id'];
     
-    // Verifica se o evento está em andamento
-    $now = new DateTime();
-    $inicio = new DateTime($row['data_inicio']);
-    $fim = new DateTime($row['data_fim']);
-    
-    if ($now < $inicio || $now > $fim) {
-        echo json_encode(['success' => false, 'message' => 'Fora do período do evento']);
-        exit();
-    }
-    
-    // Verifica se o aluno está inscrito no evento
+    // Verifica se o aluno está inscrito (com mensagem mais descritiva)
     $inscricao_sql = "SELECT id FROM inscricoes WHERE evento_id = ? AND aluno_id = ?";
     $inscricao_stmt = $mysqli->prepare($inscricao_sql);
     $inscricao_stmt->bind_param("ii", $evento_id, $aluno_id);
@@ -54,11 +43,14 @@ try {
     $inscricao_result = $inscricao_stmt->get_result();
     
     if ($inscricao_result->num_rows == 0) {
-        echo json_encode(['success' => false, 'message' => 'Você não está inscrito neste evento']);
+        echo json_encode([
+            'success' => false, 
+            'message' => 'Você não está inscrito neste evento. Por favor, inscreva-se primeiro.'
+        ]);
         exit();
     }
     
-    // Verifica se o aluno já confirmou presença
+    // Verifica se já confirmou presença
     $presenca_sql = "SELECT id FROM presencas WHERE evento_id = ? AND aluno_id = ?";
     $presenca_stmt = $mysqli->prepare($presenca_sql);
     $presenca_stmt->bind_param("ii", $evento_id, $aluno_id);
@@ -70,7 +62,7 @@ try {
         exit();
     }
     
-    // Registra a presença
+    // Registra a presença (REMOVIDA A VALIDAÇÃO DE PERÍODO)
     $insert_sql = "INSERT INTO presencas (evento_id, aluno_id, data_presenca, codigo_presenca) 
                    VALUES (?, ?, NOW(), ?)";
     $insert_stmt = $mysqli->prepare($insert_sql);

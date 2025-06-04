@@ -74,7 +74,7 @@ async function fetchAPI(url, method = 'GET', data = null) {
     headers: {
       'Content-Type': 'application/json',
     },
-    credentials: 'include' // Adicione isso se estiver usando sessões/cookies
+    credentials: 'include'
   };
 
   if (data) {
@@ -84,13 +84,21 @@ async function fetchAPI(url, method = 'GET', data = null) {
   try {
     const response = await fetch(url, config);
     
-    if (!response.ok) {
-      // Tenta obter a mensagem de erro do corpo da resposta
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+    // Verifica se a resposta é JSON
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      const text = await response.text();
+      throw new Error(`Resposta inválida do servidor: ${text.substring(0, 100)}`);
     }
     
-    return await response.json();
+    const result = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(result.message || `HTTP error! status: ${response.status}`);
+    }
+    
+    return result;
+    
   } catch (error) {
     console.error(`Erro na requisição ${method} para ${url}:`, error);
     throw new Error(error.message || 'Erro na comunicação com o servidor');
@@ -104,6 +112,7 @@ async function fetchAPI(url, method = 'GET', data = null) {
  * @param {function} onSuccess - Callback para sucesso
  * @param {function} onError - Callback para erro (opcional)
  */
+
 function setupFormAJAX(formId, endpoint, onSuccess, onError = null) {
   const form = document.getElementById(formId);
   if (!form) return;
@@ -113,45 +122,110 @@ function setupFormAJAX(formId, endpoint, onSuccess, onError = null) {
     
     const submitBtn = form.querySelector('button[type="submit"]');
     const originalBtnText = submitBtn.innerHTML;
+    const messageDiv = document.getElementById('form-messages') || createMessageDiv(form);
 
     try {
       submitBtn.disabled = true;
       submitBtn.innerHTML = '<span class="spinner"></span> Processando...';
 
-      // Coleta todos os dados do formulário, incluindo o campo hidden id
-      const formData = new FormData(form);
-      const data = {};
-      formData.forEach((value, key) => data[key] = value);
+      // Coleta dados do formulário
+      const formData = {};
+      new FormData(form).forEach((value, key) => formData[key] = value);
 
-      console.log('Dados sendo enviados:', data); // Adicione este log para depuração
+      // Debug: mostra dados sendo enviados
+      console.log('Enviando para', endpoint, 'dados:', formData);
 
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(data)
+        body: JSON.stringify(formData)
       });
 
-      const result = await response.json();
+      // Debug: mostra resposta bruta
+      console.log('Resposta recebida:', response);
+
+      const text = await response.text();
       
+      // Debug: mostra conteúdo da resposta
+      console.log('Conteúdo da resposta:', text);
+
+      let result;
+      try {
+        result = JSON.parse(text);
+      } catch (e) {
+        throw new Error(`Resposta inválida do servidor: ${text.substring(0, 100)}`);
+      }
+
       if (!response.ok) {
-        throw new Error(result.message || 'Erro na requisição');
+        throw new Error(result.message || `Erro ${response.status}`);
       }
 
       if (onSuccess) onSuccess(result, form);
+      
     } catch (error) {
       console.error('Erro no formulário:', error);
+      messageDiv.innerHTML = `<div class="error-message">${error.message}</div>`;
+      
       if (onError) {
         onError(error, form);
-      } else {
-        alert(error.message || 'Erro ao processar formulário');
       }
     } finally {
       submitBtn.disabled = false;
       submitBtn.innerHTML = originalBtnText;
     }
   });
+
+  function createMessageDiv(form) {
+    const div = document.createElement('div');
+    div.id = 'form-messages';
+    form.parentNode.insertBefore(div, form);
+    return div;
+  }
+}
+
+// Configuração do formulário de evento
+if (document.querySelector(".coordenador-section")) {
+  setupFormAJAX(
+    'event-form',
+    './back-end/cadastrar_evento.php',
+    (result, form) => {
+      const messageDiv = document.getElementById('form-messages');
+      messageDiv.innerHTML = '';
+      
+      if (result.success) {
+        const successMsg = document.createElement('div');
+        successMsg.className = 'success-message';
+        successMsg.textContent = result.message || 'Evento cadastrado com sucesso!';
+        
+        if (result.codigo_presenca) {
+          const codeMsg = document.createElement('div');
+          codeMsg.className = 'code-message';
+          codeMsg.innerHTML = `<strong>Código de Presença:</strong> ${result.codigo_presenca}`;
+          messageDiv.appendChild(codeMsg);
+        }
+        
+        messageDiv.appendChild(successMsg);
+        form.reset();
+        
+        // Recarrega a lista de eventos após 2 segundos
+        setTimeout(() => {
+          if (typeof carregarEventosCoordenador === 'function') {
+            carregarEventosCoordenador();
+          } else {
+            window.location.reload();
+          }
+        }, 2000);
+      } else {
+        throw new Error(result.message || 'Erro ao cadastrar evento');
+      }
+    },
+    (error, form) => {
+      const messageDiv = document.getElementById('form-messages') || createMessageDiv(form);
+      messageDiv.innerHTML = `<div class="error-message">${error.message}</div>`;
+    }
+  );
 }
 
 // =============================================
@@ -173,55 +247,86 @@ if (registerBtn && loginBtn) {
 
 if (document.querySelector(".aluno-section")) {
   // Carrega eventos do servidor
-async function carregarEventos() {
+  async function carregarEventos() {
     try {
-        const eventos = await fetchAPI('./back-end/listar_eventos.php');
-        const eventList = document.getElementById("event-list");
-        
-        eventList.innerHTML = eventos.map(evento => `
-            <div class="event-item">
-                <span class="event-title">${evento.nome}</span>
-                <span class="event-date">${formatarData(evento.data_inicio)} - ${evento.local}</span>
-                <span class="event-coord">Coordenador: ${evento.coordenador_nome}</span>
-                <div class="event-actions">
-                    <button class="btn-confirmar-evento" data-id="${evento.id}">Confirmar Presença</button>
-                </div>
-            </div>
-        `).join('');
+      const eventos = await fetchAPI('./back-end/listar_eventos.php');
+      const eventList = document.getElementById("event-list");
+      
+      eventList.innerHTML = eventos.map(evento => `
+        <div class="event-item">
+          <span class="event-title">${evento.nome}</span>
+          <span class="event-date">${formatarData(evento.data_inicio)} - ${evento.local}</span>
+          <span class="event-coord">Coordenador: ${evento.coordenador_nome}</span>
+          <div class="event-actions">
+            <button class="btn-confirmar-evento" data-id="${evento.id}">Confirmar Presença</button>
+          </div>
+        </div>
+      `).join('');
 
-        // Configura eventos de confirmação de presença
-        document.querySelectorAll(".btn-confirmar-evento").forEach(btn => {
-    btn.addEventListener("click", async () => {
+      // Configura eventos de confirmação de presença
+      configurarBotoesConfirmacao();
+    } catch (error) {
+      console.error('Erro ao carregar eventos:', error);
+      document.getElementById("event-list").innerHTML = '<p>Erro ao carregar eventos. Tente novamente.</p>';
+    }
+  }
+
+  // Função para configurar os botões de confirmação
+  function configurarBotoesConfirmacao() {
+    document.querySelectorAll(".btn-confirmar-evento").forEach(btn => {
+      btn.addEventListener("click", async () => {
         const eventId = btn.getAttribute('data-id');
         const codigo = prompt("Digite o código de presença fornecido pelo coordenador:");
         
         if (!codigo) {
-            alert("Por favor, insira um código válido.");
-            return;
+          alert("Por favor, insira um código válido.");
+          return;
         }
 
         try {
-    const result = await fetchAPI('./back-end/confirmar_presenca.php', 'POST', { 
-        codigo: codigo.trim(),
-        evento_id: eventId
+          const result = await fetchAPI('./back-end/confirmar_presenca.php', 'POST', { 
+            codigo: codigo.trim(),
+            evento_id: eventId
+          });
+          
+          if (result.success) {
+            alert(result.message || "Presença confirmada com sucesso!");
+            carregarCertificados();
+          } else {
+            // Mostra mensagem específica do servidor
+            alert(result.message || "Erro ao confirmar presença");
+            
+            // Se for erro de não inscrito, oferece opção de se inscrever
+            if (result.message && result.message.includes("não está inscrito")) {
+              if (confirm("Deseja se inscrever no evento agora?")) {
+                // Chama função para inscrever o aluno
+                await inscreverNoEvento(eventId);
+              }
+            }
+          }
+        } catch (error) {
+          alert(error.message || "Erro ao confirmar presença");
+        }
+      });
     });
-    
-    if (result.success) {
-        alert(result.message || "Presença confirmada com sucesso!");
-        carregarCertificados();
-    } else {
-        throw new Error(result.message || "Erro ao confirmar presença");
-    }
-} catch (error) {
-    alert(error.message || "Erro ao confirmar presença");
-}
-    });
-});
+  }
+
+  // Função para inscrever o aluno em um evento
+  async function inscreverNoEvento(eventoId) {
+    try {
+      const result = await fetchAPI('./back-end/inscrever_evento.php', 'POST', {
+        evento_id: eventoId
+      });
+      
+      if (result.success) {
+        alert("Inscrição realizada com sucesso! Agora você pode confirmar presença.");
+      } else {
+        alert(result.message || "Erro ao realizar inscrição");
+      }
     } catch (error) {
-        console.error('Erro ao carregar eventos:', error);
-        document.getElementById("event-list").innerHTML = '<p>Erro ao carregar eventos. Tente novamente.</p>';
+      alert(error.message || "Erro ao tentar inscrever-se");
     }
-}
+  }
 
   // Carrega certificados do servidor
   async function carregarCertificados() {
