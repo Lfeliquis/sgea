@@ -329,6 +329,7 @@ if (document.querySelector(".aluno-section")) {
   }
 
   // Carrega certificados do servidor
+  // Função melhorada para carregar certificados
   async function carregarCertificados() {
     try {
       const certificados = await fetchAPI('./back-end/listar_certificados.php');
@@ -337,14 +338,81 @@ if (document.querySelector(".aluno-section")) {
       certificateList.innerHTML = certificados.length > 0 
         ? certificados.map(cert => `
             <div class="certificate-item">
-              <span>${cert.evento_nome} - ${formatarData(cert.data_emissao)}</span>
-              <a href="${cert.link_certificado}" class="btn-download" download>Baixar Certificado</a>
+              <div class="certificate-header">
+                <h3>${cert.evento_nome}</h3>
+                <span class="certificate-date">${formatarData(cert.data_emissao)}</span>
+              </div>
+              <div class="certificate-body">
+                <p class="certificate-description">Certificado de participação com carga horária de ${cert.carga_horaria || '8'} horas</p>
+                <div class="certificate-footer">
+                  <div class="verification-info">
+                    <span class="verification-label">Código:</span>
+                    <span class="verification-code">${cert.codigo_verificacao}</span>
+                  </div>
+                  <div class="certificate-actions">
+                    <a href="${cert.link_certificado}" class="btn-download" download target="_blank">
+                      <i class="fas fa-download"></i> Baixar
+                    </a>
+                    <button class="btn-verify" data-code="${cert.codigo_verificacao}">
+                      <i class="fas fa-check-circle"></i> Verificar
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           `).join('')
-        : '<p>Nenhum certificado disponível ainda.</p>';
+        : `<div class="no-certificates">
+              <i class="fas fa-certificate"></i>
+              <p>Nenhum certificado disponível ainda</p>
+              <small>Participe de eventos e confirme sua presença para receber certificados</small>
+            </div>`;
+
+      // Configura botões de verificação
+      document.querySelectorAll('.btn-verify').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const codigo = btn.getAttribute('data-code');
+          try {
+            const result = await fetchAPI(`./back-end/verificar_certificado.php?codigo=${codigo}`);
+            if (result.success) {
+              const cert = result.certificado;
+              Swal.fire({
+                title: 'Certificado Válido!',
+                html: `
+                  <div class="certificate-valid">
+                    <p><strong>Aluno:</strong> ${cert.aluno_nome}</p>
+                    <p><strong>Evento:</strong> ${cert.evento_nome}</p>
+                    <p><strong>Data de Emissão:</strong> ${formatarData(cert.data_emissao)}</p>
+                    <p><strong>Carga Horária:</strong> ${cert.carga_horaria || '8'} horas</p>
+                    <div class="qr-code-container">
+                      <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${window.location.origin}/verificar.php?codigo=${codigo}" 
+                           alt="QR Code de Verificação" class="qr-code">
+                      <small>Escaneie para verificar</small>
+                    </div>
+                  </div>
+                `,
+                icon: 'success',
+                confirmButtonText: 'Fechar'
+              });
+            } else {
+              throw new Error(result.message || 'Erro ao verificar certificado');
+            }
+          } catch (error) {
+            Swal.fire({
+              title: 'Erro na Verificação',
+              text: error.message || 'Certificado inválido ou não encontrado',
+              icon: 'error'
+            });
+          }
+        });
+      });
+
     } catch (error) {
       console.error('Erro ao carregar certificados:', error);
-      document.getElementById("certificate-list").innerHTML = '<p>Erro ao carregar certificados.</p>';
+      document.getElementById("certificate-list").innerHTML = `
+        <div class="error-message">
+          <i class="fas fa-exclamation-triangle"></i>
+          <p>Erro ao carregar certificados: ${error.message}</p>
+        </div>`;
     }
   }
 
@@ -547,81 +615,176 @@ if (document.querySelector(".coordenador-section")) {
   // Abre modal de presença
   async function abrirModalPresenca(eventId) {
     try {
-        const evento = await fetchAPI(`./back-end/obter_evento.php?id=${eventId}`);
-        const modal = document.getElementById("modal-presenca");
+      const evento = await fetchAPI(`./back-end/obter_evento.php?id=${eventId}`);
+      const modal = document.getElementById("modal-presenca");
+      
+      if (modal) {
+        modal.querySelector("h2").textContent = `Gerenciamento: ${evento.nome}`;
+        abrirModal("modal-presenca");
         
-        if (modal) {
-            modal.querySelector("h2").textContent = `Lista de Presença: ${evento.nome}`;
-            abrirModal("modal-presenca");
-            
-            // Adiciona botão para gerar novo código
-            const presencaHeader = document.createElement('div');
-            presencaHeader.className = 'presenca-header';
-            presencaHeader.innerHTML = `
-                <button class="btn-gerar-codigo" data-event-id="${eventId}">
-                    Gerar Novo Código
-                </button>
-                <small class="codigo-info">Código atual: ${evento.codigo_presenca || 'Nenhum'}</small>
-            `;
-            
-            const presencaList = modal.querySelector(".presenca-list");
-            presencaList.innerHTML = '';
-            presencaList.appendChild(presencaHeader);
-            
-            // Configura evento para gerar código
-            presencaHeader.querySelector('.btn-gerar-codigo').addEventListener('click', async (e) => {
-                e.stopPropagation();
-                try {
-                    const result = await fetchAPI('./back-end/gerar_codigo_presenca.php', 'POST', { 
-                        evento_id: eventId 
-                    });
-                    
-                    if (result.success) {
-                        alert(`Novo código gerado: ${result.codigo}\nValidade: 2 horas`);
-                        presencaHeader.querySelector('.codigo-info').textContent = 
-                            `Código atual: ${result.codigo}`;
-                    } else {
-                        throw new Error(result.message || 'Erro ao gerar código');
-                    }
-                } catch (error) {
-                    alert(error.message || 'Erro ao gerar código de presença');
-                }
+        const presencaHeader = document.createElement('div');
+        presencaHeader.className = 'presenca-header';
+        presencaHeader.innerHTML = `
+          <div class="header-actions">
+            <button class="btn-gerar-codigo" data-event-id="${eventId}">
+              <i class="fas fa-key"></i> Gerar Código
+            </button>
+            <button class="btn-emitir-certificados" data-event-id="${eventId}">
+              <i class="fas fa-certificate"></i> Emitir Certificados
+            </button>
+          </div>
+          <div class="header-info">
+            <small class="codigo-info">Código atual: ${evento.codigo_presenca || 'Nenhum'}</small>
+            <small class="certificate-info">Certificados: ${evento.certificados_emitidos ? 'Emitidos' : 'Pendentes'}</small>
+          </div>
+        `;
+        
+        const presencaList = modal.querySelector(".presenca-list");
+        presencaList.innerHTML = '';
+        presencaList.appendChild(presencaHeader);
+        
+        // Configura evento para gerar código
+        presencaHeader.querySelector('.btn-gerar-codigo').addEventListener('click', async (e) => {
+          e.stopPropagation();
+          try {
+            const result = await fetchAPI('./back-end/gerar_codigo_presenca.php', 'POST', { 
+              evento_id: eventId 
             });
             
-            // Carrega a lista de presença
-            try {
-                const presencas = await fetchAPI(`./back-end/listar_presencas.php?evento_id=${eventId}`);
-                
-                const listContainer = document.createElement('div');
-                listContainer.className = 'presenca-list-container';
-                
-                if (presencas.length > 0) {
-                    listContainer.innerHTML = presencas.map(presenca => `
-                        <div class="presenca-item">
-                            <span>${presenca.nome_aluno}</span>
-                            <span class="status-presenca confirmado">
-                                Confirmado em ${formatarData(presenca.data_presenca)}
-                            </span>
-                        </div>
-                    `).join('');
-                } else {
-                    listContainer.innerHTML = '<p>Nenhuma presença registrada ainda.</p>';
-                }
-                
-                presencaList.appendChild(listContainer);
-            } catch (error) {
-                console.error('Erro ao carregar presenças:', error);
-                const errorMsg = document.createElement('p');
-                errorMsg.className = 'error';
-                errorMsg.textContent = 'Erro ao carregar presenças: ' + error.message;
-                presencaList.appendChild(errorMsg);
+            if (result.success) {
+              Swal.fire({
+                title: 'Código Gerado!',
+                html: `
+                  <div class="generated-code">
+                    <p><strong>Novo código:</strong></p>
+                    <div class="code-display">${result.codigo}</div>
+                    <p>Validade: 2 horas</p>
+                    <small>Compartilhe este código com os participantes</small>
+                  </div>
+                `,
+                icon: 'success'
+              });
+              presencaHeader.querySelector('.codigo-info').textContent = `Código atual: ${result.codigo}`;
+            } else {
+              throw new Error(result.message || 'Erro ao gerar código');
             }
+          } catch (error) {
+            Swal.fire({
+              title: 'Erro',
+              text: error.message || 'Erro ao gerar código de presença',
+              icon: 'error'
+            });
+          }
+        });
+        
+        // Configura evento para emitir certificados
+        presencaHeader.querySelector('.btn-emitir-certificados').addEventListener('click', async (e) => {
+          e.stopPropagation();
+          try {
+            const { value: cargaHoraria } = await Swal.fire({
+              title: 'Emitir Certificados',
+              input: 'number',
+              inputLabel: 'Carga Horária (horas)',
+              inputPlaceholder: 'Digite a carga horária do evento',
+              inputValue: '8',
+              showCancelButton: true,
+              inputValidator: (value) => {
+                if (!value || value <= 0) {
+                  return 'Por favor, digite uma carga horária válida';
+                }
+              }
+            });
+            
+            if (cargaHoraria) {
+              const result = await fetchAPI('./back-end/gerar_certificado.php', 'POST', {
+                evento_id: eventId,
+                carga_horaria: cargaHoraria
+              });
+              
+              if (result.success) {
+                Swal.fire({
+                  title: 'Sucesso!',
+                  html: `
+                    <p>Certificados emitidos para ${result.certificados_gerados} participantes</p>
+                    <small>Os participantes agora podem visualizar e baixar seus certificados</small>
+                  `,
+                  icon: 'success'
+                });
+                presencaHeader.querySelector('.certificate-info').textContent = 'Certificados: Emitidos';
+              } else {
+                throw new Error(result.message || 'Erro ao emitir certificados');
+              }
+            }
+          } catch (error) {
+            Swal.fire({
+              title: 'Erro',
+              text: error.message || 'Erro ao emitir certificados',
+              icon: 'error'
+            });
+          }
+        });
+            
+                    // Carrega a lista de presença
+        try {
+          const presencas = await fetchAPI(`./back-end/listar_presencas.php?evento_id=${eventId}`);
+          
+          const listContainer = document.createElement('div');
+          listContainer.className = 'presenca-list-container';
+          
+          if (presencas.length > 0) {
+            listContainer.innerHTML = `
+              <div class="presenca-list-header">
+                <span>Participante</span>
+                <span>Status</span>
+                <span>Certificado</span>
+              </div>
+              ${presencas.map(presenca => `
+                <div class="presenca-item">
+                  <span class="participant-name">${presenca.nome_aluno}</span>
+                  <span class="status-presenca ${presenca.confirmado ? 'confirmado' : 'pendente'}">
+                    ${presenca.confirmado ? 
+                      `Confirmado em ${formatarData(presenca.data_presenca)}` : 
+                      'Pendente'}
+                  </span>
+                  <span class="certificate-status">
+                    ${presenca.certificado_emitido ? 
+                      `<i class="fas fa-check-circle success"></i> Emitido` : 
+                      `<i class="fas fa-clock warning"></i> Pendente`}
+                  </span>
+                </div>
+              `).join('')}
+            `;
+          } else {
+            listContainer.innerHTML = `
+              <div class="no-presences">
+                <i class="fas fa-user-slash"></i>
+                <p>Nenhuma presença registrada ainda</p>
+                <small>Gere um código e compartilhe com os participantes</small>
+              </div>
+            `;
+          }
+          
+          presencaList.appendChild(listContainer);
+        } catch (error) {
+          console.error('Erro ao carregar presenças:', error);
+          const errorMsg = document.createElement('div');
+          errorMsg.className = 'error-message';
+          errorMsg.innerHTML = `
+            <i class="fas fa-exclamation-circle"></i>
+            <p>Erro ao carregar presenças: ${error.message}</p>
+          `;
+          presencaList.appendChild(errorMsg);
         }
+      }
     } catch (error) {
-        console.error('Erro ao abrir modal de presença:', error);
-        alert('Erro ao carregar dados de presença: ' + error.message);
+      console.error('Erro ao abrir modal de presença:', error);
+      Swal.fire({
+        title: 'Erro',
+        text: 'Erro ao carregar dados de presença: ' + error.message,
+        icon: 'error'
+      });
     }
-}
+  }
 
   // Carregar dados ao iniciar
   window.addEventListener('DOMContentLoaded', carregarEventosCoordenador);
